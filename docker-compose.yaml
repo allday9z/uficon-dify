@@ -58,7 +58,6 @@ services:
       - weaviate
     networks:
       - default
-      - coolify
     volumes:
       - dify_storage:/app/api/storage
 
@@ -93,7 +92,6 @@ services:
       - weaviate
     networks:
       - default
-      - coolify
     volumes:
       - dify_storage:/app/api/storage
 
@@ -109,7 +107,6 @@ services:
       - SENTRY_DSN=
     networks:
       - default
-      - coolify
 
   # -------------------------------------------------------------
   # 5. Weaviate Vector Database
