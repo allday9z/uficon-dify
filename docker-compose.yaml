@@ -161,6 +161,8 @@ services:
       - CONSOLE_API_URL=${CONSOLE_API_URL:-}
       - APP_API_URL=${APP_API_URL:-}
       - SENTRY_DSN=
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
     networks:
       - coolify
 
