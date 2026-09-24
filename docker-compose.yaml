@@ -6,10 +6,10 @@ services:
   #    Attach Domain in Coolify UI: https://dify.coolify.pve01.prod.uficon.com (Port 80)
   # -------------------------------------------------------------
   nginx:
-    image: nginx:alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
     restart: always
-    volumes:
-      - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - api
       - web
