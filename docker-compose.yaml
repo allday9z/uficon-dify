@@ -106,7 +106,6 @@ services:
     environment:
       - CONSOLE_API_URL=${CONSOLE_API_URL:-}
       - APP_API_URL=${APP_API_URL:-}
-      - SERVER_CONSOLE_API_URL=${SERVER_CONSOLE_API_URL:-http://api:5001}
       - SENTRY_DSN=
     networks:
       - default
