@@ -54,14 +54,6 @@ services:
       - APP_WEB_URL=${APP_WEB_URL:-}
       - CONSOLE_CORS_ALLOW_ORIGINS=${CONSOLE_CORS_ALLOW_ORIGINS:-*}
       - WEB_API_CORS_ALLOW_ORIGINS=${WEB_API_CORS_ALLOW_ORIGINS:-*}
-      - MAIL_TYPE=${MAIL_TYPE:-}
-      - MAIL_DEFAULT_SEND_FROM=${MAIL_DEFAULT_SEND_FROM:-}
-      - SMTP_SERVER=${SMTP_SERVER:-}
-      - SMTP_PORT=${SMTP_PORT:-}
-      - SMTP_USERNAME=${SMTP_USERNAME:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
     depends_on:
       - weaviate
     networks:
@@ -97,14 +89,6 @@ services:
       - STORAGE_LOCAL_PATH=storage
       - VECTOR_STORE=weaviate
       - WEAVIATE_ENDPOINT=http://weaviate:8080
-      - MAIL_TYPE=${MAIL_TYPE:-}
-      - MAIL_DEFAULT_SEND_FROM=${MAIL_DEFAULT_SEND_FROM:-}
-      - SMTP_SERVER=${SMTP_SERVER:-}
-      - SMTP_PORT=${SMTP_PORT:-}
-      - SMTP_USERNAME=${SMTP_USERNAME:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
     depends_on:
       - weaviate
     networks:
