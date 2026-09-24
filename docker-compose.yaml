@@ -14,7 +14,6 @@ services:
       - api
       - web
     networks:
-      - default
       - coolify
     ports:
       - "80"
@@ -57,7 +56,7 @@ services:
     depends_on:
       - weaviate
     networks:
-      - default
+      - coolify
     volumes:
       - dify_storage:/app/api/storage
 
@@ -91,7 +90,7 @@ services:
     depends_on:
       - weaviate
     networks:
-      - default
+      - coolify
     volumes:
       - dify_storage:/app/api/storage
 
@@ -106,7 +105,7 @@ services:
       - APP_API_URL=${APP_API_URL:-}
       - SENTRY_DSN=
     networks:
-      - default
+      - coolify
 
   # -------------------------------------------------------------
   # 5. Weaviate Vector Database
@@ -122,7 +121,7 @@ services:
       - ENABLE_MODULES=
       - CLUSTER_HOSTNAME=node1
     networks:
-      - default
+      - coolify
     volumes:
       - weaviate_data:/var/lib/weaviate
 
@@ -131,6 +130,5 @@ volumes:
   weaviate_data:
 
 networks:
-  default:
   coolify:
     external: true
