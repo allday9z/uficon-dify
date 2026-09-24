@@ -52,6 +52,8 @@ services:
       - SERVICE_API_URL=${SERVICE_API_URL:-}
       - APP_API_URL=${APP_API_URL:-}
       - APP_WEB_URL=${APP_WEB_URL:-}
+      - CONSOLE_CORS_ALLOW_ORIGINS=${CONSOLE_CORS_ALLOW_ORIGINS:-*}
+      - WEB_API_CORS_ALLOW_ORIGINS=${WEB_API_CORS_ALLOW_ORIGINS:-*}
     depends_on:
       - weaviate
     networks:
