@@ -53,8 +53,22 @@ services:
       - APP_WEB_URL=${APP_WEB_URL:-}
       - CONSOLE_CORS_ALLOW_ORIGINS=${CONSOLE_CORS_ALLOW_ORIGINS:-*}
       - WEB_API_CORS_ALLOW_ORIGINS=${WEB_API_CORS_ALLOW_ORIGINS:-*}
+      - PLUGIN_DAEMON_URL=http://plugin_daemon:5002
+      - PLUGIN_DAEMON_KEY=${PLUGIN_DAEMON_KEY:-lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi}
+      - INNER_API_KEY_FOR_PLUGIN=${PLUGIN_DIFY_INNER_API_KEY:-QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1}
+      - PLUGIN_DIFY_INNER_API_URL=http://api:5001
+      - PLUGIN_DIFY_INNER_API_KEY=${PLUGIN_DIFY_INNER_API_KEY:-QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1}
+      - MAIL_TYPE
+      - MAIL_DEFAULT_SEND_FROM
+      - SMTP_SERVER
+      - SMTP_PORT
+      - SMTP_USERNAME
+      - SMTP_PASSWORD
+      - SMTP_USE_TLS
+      - SMTP_USE_SSL
     depends_on:
       - weaviate
+      - plugin_daemon
     networks:
       - coolify
     volumes:
@@ -87,15 +101,58 @@ services:
       - STORAGE_LOCAL_PATH=storage
       - VECTOR_STORE=weaviate
       - WEAVIATE_ENDPOINT=http://weaviate:8080
+      - PLUGIN_DAEMON_URL=http://plugin_daemon:5002
+      - PLUGIN_DAEMON_KEY=${PLUGIN_DAEMON_KEY:-lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi}
+      - INNER_API_KEY_FOR_PLUGIN=${PLUGIN_DIFY_INNER_API_KEY:-QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1}
+      - PLUGIN_DIFY_INNER_API_URL=http://api:5001
+      - PLUGIN_DIFY_INNER_API_KEY=${PLUGIN_DIFY_INNER_API_KEY:-QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1}
+      - MAIL_TYPE
+      - MAIL_DEFAULT_SEND_FROM
+      - SMTP_SERVER
+      - SMTP_PORT
+      - SMTP_USERNAME
+      - SMTP_PASSWORD
+      - SMTP_USE_TLS
+      - SMTP_USE_SSL
     depends_on:
       - weaviate
+      - plugin_daemon
     networks:
       - coolify
     volumes:
       - dify_storage:/app/api/storage
 
   # -------------------------------------------------------------
-  # 4. Dify Frontend (Next.js Web UI)
+  # 4. Dify Plugin Daemon (Manages LLM Providers, Tools & Plugins)
+  # -------------------------------------------------------------
+  plugin_daemon:
+    image: langgenius/dify-plugin-daemon:0.6.10-local
+    restart: always
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_PLUGIN_DATABASE:-${DB_DATABASE}}
+      - DB_SSL_MODE=${DB_SSL_MODE:-disable}
+      - SERVER_PORT=5002
+      - SERVER_KEY=${PLUGIN_DAEMON_KEY:-lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi}
+      - MAX_PLUGIN_PACKAGE_SIZE=52428800
+      - DIFY_INNER_API_URL=http://api:5001
+      - DIFY_INNER_API_KEY=${PLUGIN_DIFY_INNER_API_KEY:-QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1}
+      - PLUGIN_REMOTE_INSTALLING_HOST=0.0.0.0
+      - PLUGIN_REMOTE_INSTALLING_PORT=5003
+      - PLUGIN_WORKING_PATH=/app/storage/cwd
+      - FORCE_VERIFYING_SIGNATURE=${FORCE_VERIFYING_SIGNATURE:-false}
+      - PLUGIN_STORAGE_TYPE=local
+      - PLUGIN_STORAGE_LOCAL_ROOT=/app/storage
+    volumes:
+      - dify_plugin_storage:/app/storage
+    networks:
+      - coolify
+
+  # -------------------------------------------------------------
+  # 5. Dify Frontend (Next.js Web UI)
   # -------------------------------------------------------------
   web:
     image: langgenius/dify-web:main
@@ -108,7 +165,7 @@ services:
       - coolify
 
   # -------------------------------------------------------------
-  # 5. Weaviate Vector Database
+  # 6. Weaviate Vector Database
   # -------------------------------------------------------------
   weaviate:
     image: cr.weaviate.io/semitechnologies/weaviate:1.39.2
@@ -128,6 +185,7 @@ services:
 volumes:
   dify_storage:
   weaviate_data:
+  dify_plugin_storage:
 
 networks:
   coolify:
