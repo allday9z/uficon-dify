@@ -1,14 +1,91 @@
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
+const BASE_URL = process.env.BASE_URL || 'https://dify.coolify.pve01.prod.uficon.com';
 
 const CHANNEL_ID = process.env.LINE_CHANNEL_ID || '2007934301';
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || 'a7195ed6b87d67b2d8931dc3c3723583';
 const DIFY_API_URL = process.env.DIFY_API_URL || 'http://api:5001/v1';
 const DIFY_API_KEY = process.env.DIFY_API_KEY || 'app-fouUlNalchxh8oq5H7S9VQAD';
 const SYSTEMONE_API_URL = process.env.SYSTEMONE_API_URL || 'http://100.121.91.32:8000/v1/systemone';
+
+// Paused / Human Handover State Store (File-backed)
+const PAUSED_USERS_FILE = process.env.PAUSED_USERS_FILE || '/tmp/paused_users.json';
+const pausedUsers = new Map();
+
+function loadPausedUsers() {
+  try {
+    if (fs.existsSync(PAUSED_USERS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(PAUSED_USERS_FILE, 'utf8'));
+      const now = Date.now();
+      for (const [uid, info] of Object.entries(data)) {
+        if (info.until > now) {
+          pausedUsers.set(uid, info);
+        }
+      }
+      console.log(`[LINE-BOT] Loaded ${pausedUsers.size} paused user(s) from persistent storage.`);
+    }
+  } catch (e) {
+    console.warn('[LINE-BOT] Could not load paused users:', e.message);
+  }
+}
+
+function savePausedUsers() {
+  try {
+    const obj = {};
+    for (const [k, v] of pausedUsers.entries()) {
+      obj[k] = v;
+    }
+    fs.writeFileSync(PAUSED_USERS_FILE, JSON.stringify(obj, null, 2));
+  } catch (e) {
+    console.warn('[LINE-BOT] Could not save paused users:', e.message);
+  }
+}
+
+function pauseUser(userId, name = '', hours = 24, reason = 'auto_escalation', pausedBy = 'System') {
+  if (!userId || userId === 'employee') return;
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+  // Default to end of current day (midnight) or at least 12 hours
+  const until = Math.max(endOfDay.getTime(), Date.now() + 12 * 3600 * 1000);
+  
+  pausedUsers.set(userId, {
+    name: name || userId,
+    until,
+    reason,
+    pausedBy,
+    pausedAt: Date.now()
+  });
+  savePausedUsers();
+  console.log(`[LINE-BOT] User [${name || userId}] PAUSED until ${new Date(until).toLocaleString('th-TH')} by ${pausedBy} (${reason})`);
+}
+
+function resumeUser(userId) {
+  if (pausedUsers.has(userId)) {
+    const info = pausedUsers.get(userId);
+    pausedUsers.delete(userId);
+    savePausedUsers();
+    console.log(`[LINE-BOT] User [${info.name || userId}] RESUMED by admin.`);
+    return info;
+  }
+  return null;
+}
+
+function isUserPaused(userId) {
+  if (!pausedUsers.has(userId)) return false;
+  const info = pausedUsers.get(userId);
+  if (Date.now() > info.until) {
+    pausedUsers.delete(userId);
+    savePausedUsers();
+    return false;
+  }
+  return true;
+}
+
+loadPausedUsers();
 
 // Developers (Test access ONLY - NEVER receive HR alerts)
 const DEV_KEYWORDS = (process.env.DEV_KEYWORDS || 'mneodev,m2dev,m2,pongpisut,mneo').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
@@ -109,6 +186,11 @@ async function notifyAdmin({ displayName, userId, query, reason, details, severi
 
   console.log(`[LINE-BOT] Sending alert to ${filtered.length} admin(s) in tier [${tierTitle}]...`);
 
+  // Auto-pause bot for this employee so bot won't interfere with HR conversation
+  pauseUser(userId, displayName, 24, reason || 'Escalation Alert', 'Auto-Escalation');
+
+  const resumeUrl = `${BASE_URL}/webhook/line/resume?userId=${encodeURIComponent(userId)}`;
+
   for (const admin of filtered) {
     try {
       const alertMsg = 
@@ -116,7 +198,9 @@ async function notifyAdmin({ displayName, userId, query, reason, details, severi
         `👤 พนักงาน: ${displayName || 'พนักงาน'}\n` +
         `💬 ข้อความ: "${query}"\n` +
         `🎯 การประเมิน: ${details || reason}\n\n` +
-        `👉 ตอบแชทพนักงานได้ที่: https://chat.line.biz/`;
+        `👉 ตอบแชทพนักงาน: https://chat.line.biz/\n\n` +
+        `⏸️ สถานะ: ระบบหยุดบอทให้คนนี้ชั่วคราวแล้ว (จนถึงสิ้นวัน)\n` +
+        `🟢 เมื่อคุยจบ กดเปิดบอทต่อ: ${resumeUrl}`;
 
       await sendReply(null, admin.userId, alertMsg);
       console.log(`[LINE-BOT] Successfully pushed alert to ${admin.name} (${admin.userId})`);
@@ -206,6 +290,100 @@ app.get('/webhook/line', (req, res) => {
   res.send('LINE Webhook Endpoint is active. Please configure POST in LINE Developers Console.');
 });
 
+// 1-Click Action to Resume Bot for a User
+app.get('/webhook/line/resume', (req, res) => {
+  const { userId } = req.query;
+  if (!userId) {
+    return res.status(400).send('Missing userId parameter.');
+  }
+  const info = resumeUser(userId);
+  const name = info ? (info.name || userId) : userId;
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>เปิดการทำงานบอท</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f0fdf4; color: #166534; }
+        .card { background: white; padding: 32px 24px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); text-align: center; max-width: 90%; width: 380px; }
+        .icon { font-size: 54px; margin-bottom: 16px; }
+        h2 { margin: 0 0 12px 0; font-size: 22px; color: #14532d; }
+        p { margin: 0 0 24px 0; font-size: 15px; color: #374151; line-height: 1.5; }
+        .user-badge { display: inline-block; background: #dcfce7; color: #15803d; padding: 6px 14px; border-radius: 999px; font-weight: 600; margin-bottom: 16px; font-size: 14px; }
+        .btn { display: inline-block; width: 100%; box-sizing: border-box; padding: 14px 20px; background: #16a34a; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 16px; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="icon">🟢</div>
+        <div class="user-badge">${name}</div>
+        <h2>เปิดบอทเรียบร้อยแล้ว</h2>
+        <p>ระบบได้เปิดให้บอทกลับมาช่วยตอบคำถามสำหรับพนักงานท่านนี้ตามปกติแล้วครับ</p>
+        <a class="btn" href="https://chat.line.biz/">กลับไปที่ LINE OA Manager</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// 1-Click Action to Pause Bot for a User
+app.get('/webhook/line/pause', (req, res) => {
+  const { userId, name } = req.query;
+  if (!userId) {
+    return res.status(400).send('Missing userId parameter.');
+  }
+  pauseUser(userId, name || userId, 24, 'Web 1-Click Action', 'HR Admin');
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>หยุดการทำงานบอทชั่วคราว</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #fef2f2; color: #991b1b; }
+        .card { background: white; padding: 32px 24px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); text-align: center; max-width: 90%; width: 380px; }
+        .icon { font-size: 54px; margin-bottom: 16px; }
+        h2 { margin: 0 0 12px 0; font-size: 22px; color: #7f1d1d; }
+        p { margin: 0 0 24px 0; font-size: 15px; color: #374151; line-height: 1.5; }
+        .user-badge { display: inline-block; background: #fee2e2; color: #b91c1c; padding: 6px 14px; border-radius: 999px; font-weight: 600; margin-bottom: 16px; font-size: 14px; }
+        .btn { display: inline-block; width: 100%; box-sizing: border-box; padding: 14px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 16px; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="icon">⏸️</div>
+        <div class="user-badge">${name || userId}</div>
+        <h2>สั่งหยุดบอทชั่วคราวแล้ว</h2>
+        <p>บอทจะไม่ตอบข้อความพนักงานท่านนี้จนถึงสิ้นวัน เพื่อให้ HR สามารถพูดคุยได้โดยไม่มีบอทแทรกครับ</p>
+        <a class="btn" href="https://chat.line.biz/">ไปที่ LINE OA Manager</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+app.get('/webhook/line/status', (req, res) => {
+  const result = [];
+  for (const [uid, info] of pausedUsers.entries()) {
+    result.push({
+      userId: uid,
+      name: info.name,
+      until: new Date(info.until).toISOString(),
+      untilLocal: new Date(info.until).toLocaleString('th-TH'),
+      reason: info.reason,
+      pausedBy: info.pausedBy
+    });
+  }
+  res.json({
+    status: 'ok',
+    total_paused: pausedUsers.size,
+    paused_users: result
+  });
+});
+
 // LINE Webhook handler
 app.post('/webhook/line', async (req, res) => {
   const signature = req.headers['x-line-signature'];
@@ -285,6 +463,54 @@ async function handleMessage(query, userId, replyToken) {
       console.log(`[LINE-BOT] Access denied in test mode for: ${displayName || 'Unknown'} (${userId}) - SILENT DROP (no reply sent)`);
       // SILENT DROP: Do NOT reply anything back to general users during test mode!
       return;
+    }
+
+    // HR / Dev Chat Commands to control Bot status
+    if (isHrStaff || isDev) {
+      const trimmed = query.trim();
+      if (trimmed.startsWith('#เปิด') || trimmed.startsWith('#resume')) {
+        const target = trimmed.replace(/^#(เปิด|resume)\s*/, '').trim();
+        if (!target) {
+          await sendReply(replyToken, userId, 'กรุณาระบุ User ID เช่น: #เปิด Ue678...');
+          return;
+        }
+        const resumed = resumeUser(target);
+        const replyText = resumed
+          ? `🟢 เปิดบอทสำหรับ (${resumed.name || target}) เรียบร้อยแล้วครับ บอทจะกลับมาช่วยตอบตามปกติ`
+          : `ℹ️ ไม่พบสถานะระงับของ (${target}) ครับ บอทเปิดทำงานอยู่แล้ว`;
+        await sendReply(replyToken, userId, replyText);
+        return;
+      }
+      if (trimmed.startsWith('#ปิด') || trimmed.startsWith('#pause')) {
+        const target = trimmed.replace(/^#(ปิด|pause)\s*/, '').trim();
+        if (!target) {
+          await sendReply(replyToken, userId, 'กรุณาระบุ User ID เช่น: #ปิด Ue678...');
+          return;
+        }
+        pauseUser(target, target, 24, 'HR Chat Command', displayName || 'HR Admin');
+        await sendReply(replyToken, userId, `⏸️ สั่งหยุดบอทสำหรับ (${target}) ชั่วคราวเรียบร้อยแล้วครับ (จนถึงสิ้นวัน)`);
+        return;
+      }
+      if (trimmed === '#สถานะ' || trimmed === '#status') {
+        if (pausedUsers.size === 0) {
+          await sendReply(replyToken, userId, '🟢 ขณะนี้ไม่มีพนักงานที่ถูกระงับบอทครับ (บอทสแตนด์บายตอบทุกคนตามปกติ)');
+        } else {
+          let listText = '⏸️ รายชื่อพนักงานที่บอทหยุดตอบอยู่ (ให้ HR คุย):\n\n';
+          for (const [uid, info] of pausedUsers.entries()) {
+            listText += `• ${info.name || uid}\n  หยุดตอบถึง: ${new Date(info.until).toLocaleTimeString('th-TH')}\n  เหตุผล: ${info.reason}\n\n`;
+          }
+          listText += '👉 พิมพ์ #เปิด [User ID] เพื่อเปิดให้บอทกลับมาตอบ';
+          await sendReply(replyToken, userId, listText);
+        }
+        return;
+      }
+    }
+
+    // Check if user is currently paused (HR Takeover / Escalation Active)
+    if (isUserPaused(userId)) {
+      const info = pausedUsers.get(userId);
+      console.log(`[LINE-BOT] User [${displayName || 'Unknown'} | ${userId}] is PAUSED (until ${new Date(info.until).toLocaleTimeString('th-TH')}). Silent drop to allow HR chat.`);
+      return; // SILENT DROP: Do not reply anything while HR is in takeover!
     }
 
     // Step 1: Pre-evaluate query with System 1 (OpenThai-SystemOne on ServerAI)
