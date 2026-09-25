@@ -4,10 +4,50 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 8000;
 
+const CHANNEL_ID = process.env.LINE_CHANNEL_ID || '2007934301';
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || 'a7195ed6b87d67b2d8931dc3c3723583';
-const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
 const DIFY_API_URL = process.env.DIFY_API_URL || 'http://api:5001/v1';
 const DIFY_API_KEY = process.env.DIFY_API_KEY || 'app-fouUlNalchxh8oq5H7S9VQAD';
+
+let cachedToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+let tokenExpiry = 0;
+
+async function getChannelAccessToken() {
+  if (cachedToken && Date.now() < tokenExpiry) {
+    return cachedToken;
+  }
+  if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    return process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  }
+  try {
+    console.log('[LINE-BOT] Requesting Channel Access Token via LINE OAuth (client_credentials)...');
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', CHANNEL_ID);
+    params.append('client_secret', CHANNEL_SECRET);
+
+    const res = await fetch('https://api.line.me/v2/oauth/accessToken', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString()
+    });
+
+    const data = await res.json();
+    if (data.access_token) {
+      cachedToken = data.access_token;
+      tokenExpiry = Date.now() + ((data.expires_in || 2592000) - 3600) * 1000;
+      console.log('[LINE-BOT] Successfully acquired Channel Access Token!');
+      return cachedToken;
+    } else {
+      console.error('[LINE-BOT] Failed to obtain token from LINE OAuth:', data);
+    }
+  } catch (err) {
+    console.error('[LINE-BOT] OAuth token request error:', err);
+  }
+  return cachedToken;
+}
 
 // Capture raw body for LINE signature verification
 app.use(express.json({
@@ -111,8 +151,9 @@ async function handleMessage(query, userId, replyToken) {
 }
 
 async function sendReply(replyToken, userId, text) {
-  if (!CHANNEL_ACCESS_TOKEN) {
-    console.warn('[LINE-BOT] Notice: LINE_CHANNEL_ACCESS_TOKEN is not yet set. Message generated but not sent.');
+  const token = await getChannelAccessToken();
+  if (!token) {
+    console.warn('[LINE-BOT] Cannot reply: LINE Channel Access Token could not be acquired.');
     return;
   }
 
@@ -122,7 +163,7 @@ async function sendReply(replyToken, userId, text) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}`
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
         replyToken: replyToken,
@@ -145,7 +186,7 @@ async function sendReply(replyToken, userId, text) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${CHANNEL_ACCESS_TOKEN}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           to: userId,
@@ -157,6 +198,9 @@ async function sendReply(replyToken, userId, text) {
     console.error('[LINE-BOT] Exception in sendReply:', err);
   }
 }
+
+// Pre-fetch token on boot
+getChannelAccessToken().catch(e => console.error('[LINE-BOT] Initial token fetch error:', e));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[LINE-BOT] UFicon LINE OA Webhook Bridge listening on port ${PORT}`);
