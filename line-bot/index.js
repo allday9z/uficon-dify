@@ -101,16 +101,18 @@ const HR_ADMIN_ROSTER = {
     { userId: 'U9a3e5ca77601d85e69dd664857797c1f', name: 'HR Senior Fluke' }
   ],
   hard: [
-    { userId: 'Uaa5c8a9d5ddf84dbb672ac9a687aed4e', name: 'HR Supervisor Note' }
+    { userId: 'Uaa5c8a9d5ddf84dbb672ac9a687aed4e', name: 'HR Supervisor Note' },
+    { userId: 'U87e20333c6e1929c0b735feb4970f81f', name: 'HR Supervisor Note' }
   ]
 };
 
-// All HR user IDs for whitelisting & testing (Only the 4 HR staff)
+// All HR user IDs for whitelisting & testing (Only the HR staff)
 const ALL_HR_USER_IDS = [
   'Ue67823b2ebf91772cb6686ed4c883e94', // HR Admin Pa
   'U7b23e41e3468860947ad8ce6ce0dc668', // HR Admin Blink
   'U9a3e5ca77601d85e69dd664857797c1f', // HR Senior Fluke
-  'Uaa5c8a9d5ddf84dbb672ac9a687aed4e'  // HR Supervisor Note
+  'Uaa5c8a9d5ddf84dbb672ac9a687aed4e', // HR Supervisor Note
+  'U87e20333c6e1929c0b735feb4970f81f'  // HR Supervisor Note (Active LINE)
 ];
 
 const HR_KEYWORDS = (process.env.HR_KEYWORDS || 'hr,admin,บุคคล,fluke,note,blink,pa').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
