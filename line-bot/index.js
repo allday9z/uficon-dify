@@ -115,8 +115,8 @@ const ALL_HR_USER_IDS = [
 
 const HR_KEYWORDS = (process.env.HR_KEYWORDS || 'hr,admin,บุคคล,fluke,note,blink,pa').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 
-// Test Mode: restricts testing to Devs & HR Staff
-const TEST_MODE = process.env.TEST_MODE !== 'false';
+// Test Mode: default false (Open to all employees, no whitelist restriction)
+const TEST_MODE = process.env.TEST_MODE === 'true';
 const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
 
 let cachedToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
