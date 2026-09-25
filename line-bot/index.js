@@ -9,6 +9,11 @@ const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || 'a7195ed6b87d67b2d8931
 const DIFY_API_URL = process.env.DIFY_API_URL || 'http://api:5001/v1';
 const DIFY_API_KEY = process.env.DIFY_API_KEY || 'app-fouUlNalchxh8oq5H7S9VQAD';
 
+// Test Mode: restricts testing to M2Dev / MNEODev
+const TEST_MODE = process.env.TEST_MODE !== 'false';
+const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+const ALLOWED_KEYWORDS = (process.env.ALLOWED_KEYWORDS || 'mneodev,m2dev,m2,pongpisut,mneo').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+
 let cachedToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
 let tokenExpiry = 0;
 
@@ -49,6 +54,22 @@ async function getChannelAccessToken() {
   return cachedToken;
 }
 
+async function getUserProfile(userId) {
+  try {
+    const token = await getChannelAccessToken();
+    if (!token) return null;
+    const res = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.error('[LINE-BOT] Error fetching profile:', e);
+  }
+  return null;
+}
+
 // Capture raw body for LINE signature verification
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -61,6 +82,8 @@ app.get('/', (req, res) => {
   res.json({
     status: 'ok',
     service: 'uficon-line-dify-bridge',
+    test_mode: TEST_MODE,
+    allowed_users_count: ALLOWED_USER_IDS.length,
     timestamp: new Date().toISOString()
   });
 });
@@ -101,8 +124,6 @@ app.post('/webhook/line', async (req, res) => {
       const replyToken = event.replyToken;
       const userId = event.source ? (event.source.userId || 'employee') : 'employee';
 
-      console.log(`[LINE-BOT] Message from [${userId}]: "${userText}"`);
-
       // Process message in background
       handleMessage(userText, userId, replyToken).catch(err => {
         console.error('[LINE-BOT] Error processing message:', err);
@@ -113,7 +134,37 @@ app.post('/webhook/line', async (req, res) => {
 
 async function handleMessage(query, userId, replyToken) {
   try {
-    console.log(`[LINE-BOT] Calling Dify API for user: ${userId}...`);
+    const profile = await getUserProfile(userId);
+    const displayName = profile ? profile.displayName : '';
+    console.log(`[LINE-BOT] Incoming message from [${displayName || 'Unknown'} | ${userId}]: "${query}"`);
+
+    // Whitelist verification for test mode
+    let isAllowed = false;
+    if (!TEST_MODE) {
+      isAllowed = true;
+    } else {
+      if (ALLOWED_USER_IDS.includes(userId)) {
+        isAllowed = true;
+      } else if (displayName && ALLOWED_KEYWORDS.some(k => displayName.toLowerCase().includes(k))) {
+        isAllowed = true;
+        if (!ALLOWED_USER_IDS.includes(userId)) {
+          ALLOWED_USER_IDS.push(userId);
+          console.log(`[LINE-BOT] Auto-whitelisted user "${displayName}" (${userId})!`);
+        }
+      }
+    }
+
+    if (!isAllowed) {
+      console.log(`[LINE-BOT] Access denied in test mode for: ${displayName} (${userId})`);
+      await sendReply(
+        replyToken,
+        userId,
+        `ขออภัยครับ ขณะนี้ระบบ "UFicon HR connect" กำลังเปิดทดสอบเฉพาะผู้พัฒนา (MNEODev / M2Dev) เท่านั้นครับ\n\n(LINE User ของคุณ: ${displayName || userId})`
+      );
+      return;
+    }
+
+    console.log(`[LINE-BOT] User authorized. Calling Dify API for: ${displayName || userId}...`);
     const difyRes = await fetch(`${DIFY_API_URL}/chat-messages`, {
       method: 'POST',
       headers: {
@@ -203,5 +254,5 @@ async function sendReply(replyToken, userId, text) {
 getChannelAccessToken().catch(e => console.error('[LINE-BOT] Initial token fetch error:', e));
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[LINE-BOT] UFicon LINE OA Webhook Bridge listening on port ${PORT}`);
+  console.log(`[LINE-BOT] UFicon LINE OA Webhook Bridge listening on port ${PORT} (TEST_MODE: ${TEST_MODE})`);
 });
