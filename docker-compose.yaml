@@ -184,6 +184,26 @@ services:
     volumes:
       - weaviate_data:/var/lib/weaviate
 
+  # -------------------------------------------------------------
+  # 7. LINE OA Webhook Bridge (Connects LINE OA to Dify Assistant)
+  # -------------------------------------------------------------
+  line_bot:
+    build:
+      context: ./line-bot
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - PORT=8000
+      - LINE_CHANNEL_ID=${LINE_CHANNEL_ID:-2007934301}
+      - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET:-a7195ed6b87d67b2d8931dc3c3723583}
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN:-}
+      - DIFY_API_URL=http://api:5001/v1
+      - DIFY_API_KEY=${DIFY_APP_API_KEY:-app-fouUlNalchxh8oq5H7S9VQAD}
+    depends_on:
+      - api
+    networks:
+      - coolify
+
 volumes:
   dify_storage:
   weaviate_data:
